@@ -1,0 +1,45 @@
+{
+  "entities": {
+    "Item": {
+      "title": "Item",
+      "description": "An item for sale in the marketplace",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier" },
+        "title": { "type": "string", "description": "Title of the item" },
+        "description": { "type": "string", "description": "Description of the item" },
+        "price": { "type": "number", "description": "Price of the item" },
+        "imageUrl": { "type": "string", "description": "Main image URL" },
+        "imageUrls": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Additional image URLs"
+        },
+        "isSelected": { "type": "boolean", "description": "Whether the item is visible to customers" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" }
+      },
+      "required": ["id", "title", "description", "price", "imageUrl"]
+    },
+    "User": {
+      "title": "User",
+      "description": "User profile and role information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "email": { "type": "string", "format": "email", "description": "User email" },
+        "role": { "type": "string", "enum": ["admin", "user"], "description": "User role" }
+      },
+      "required": ["uid", "email", "role"]
+    }
+  },
+  "firestore": {
+    "/items/{itemId}": {
+      "schema": "Item",
+      "description": "Collection of items for sale"
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles and roles"
+    }
+  }
+}

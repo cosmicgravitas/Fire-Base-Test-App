@@ -1,9 +1,12 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { collection, onSnapshot, query, orderBy, getDoc, doc } from 'firebase/firestore';
+import { auth, db } from './firebase';
 import { Item, CartItem } from './types';
 import { generateItemDetails } from './services/geminiService';
 import { resizeAndCompressImage } from './utils/fileUtils';
-import { getAllItems, saveItem, deleteItemFromDB } from './utils/dbUtils';
+import { saveItem, deleteItemFromDB, handleFirestoreError, OperationType } from './utils/dbUtils';
 import Header from './components/Header';
 import ItemList from './components/ItemList';
 import FileUpload from './components/FileUpload';
@@ -12,8 +15,17 @@ import ItemModal from './components/ItemModal';
 import CartDrawer from './components/CartDrawer';
 import AuthModal from './components/AuthModal';
 import WelcomeOverlay from './components/WelcomeOverlay';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 export default function App() {
+  return (
+    <ErrorBoundary>
+      <AppContent />
+    </ErrorBoundary>
+  );
+}
+
+function AppContent() {
   const [items, setItems] = useState<Item[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -27,26 +39,49 @@ export default function App() {
   const [isCheckoutLoading, setIsCheckoutLoading] = useState(false);
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [showOrderSuccess, setShowOrderSuccess] = useState(false);
 
   useEffect(() => {
-    const session = localStorage.getItem('aura_admin_session');
-    if (session === 'true') {
-      setIsAdmin(true);
-      setIsEditMode(true);
-    }
-    loadData();
+    const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        try {
+          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          const userData = userDoc.data();
+          const isUserAdmin = userData?.role === 'admin' || user.email === 'shammam2395559@gmail.com';
+          setIsAdmin(isUserAdmin);
+          if (isUserAdmin) setIsEditMode(true);
+        } catch (err) {
+          console.error("Error fetching user role:", err);
+          // Fallback to email check if Firestore fails
+          const isUserAdmin = user.email === 'shammam2395559@gmail.com';
+          setIsAdmin(isUserAdmin);
+          if (isUserAdmin) setIsEditMode(true);
+        }
+      } else {
+        setIsAdmin(false);
+        setIsEditMode(false);
+      }
+      setIsInitializing(false);
+    });
+
+    const itemsCol = collection(db, 'items');
+    const q = query(itemsCol, orderBy('createdAt', 'desc'));
+    const unsubscribeItems = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({
+        ...doc.data(),
+        id: doc.id,
+      })) as Item[];
+      setItems(data);
+    }, (err) => {
+      handleFirestoreError(err, OperationType.LIST, 'items');
+    });
+
+    return () => {
+      unsubscribeAuth();
+      unsubscribeItems();
+    };
   }, []);
 
-  const loadData = async () => {
-    try {
-      const data = await getAllItems();
-      setItems(data);
-    } catch (e: any) {
-      setError(`Sync Error: ${e.message}`);
-    } finally {
-      setIsInitializing(false);
-    }
-  };
 
   const filteredItems = useMemo(() => {
     return items.filter(item => {
@@ -109,15 +144,16 @@ export default function App() {
   };
 
   const handleLogin = () => {
-    setIsAdmin(true);
-    setIsEditMode(true);
-    localStorage.setItem('aura_admin_session', 'true');
+    // Auth state is handled by onAuthStateChanged
+    setIsAuthModalOpen(false);
   };
 
-  const handleLogout = () => {
-    setIsAdmin(false);
-    setIsEditMode(false);
-    localStorage.removeItem('aura_admin_session');
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch (err: any) {
+      setError(`Logout failed: ${err.message}`);
+    }
   };
 
   const updateCartQuantity = (item: Item, delta: number) => {
@@ -155,11 +191,11 @@ export default function App() {
         mode: "no-cors",
         body: JSON.stringify(orderData)
       });
-      alert("Order Placed Successfully!");
+      setShowOrderSuccess(true);
       setCart([]);
       setIsCartOpen(false);
     } catch (err) {
-      alert("There was an error placing your order. Please try again.");
+      setError("There was an error placing your order. Please try again.");
     } finally {
       setIsCheckoutLoading(false);
     }
@@ -271,6 +307,24 @@ export default function App() {
 
       {isAuthModalOpen && (
         <AuthModal onLogin={handleLogin} onClose={() => setIsAuthModalOpen(false)} />
+      )}
+
+      {showOrderSuccess && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-brand-black/40 backdrop-blur-sm">
+          <div className="bg-white p-8 rounded-3xl shadow-2xl max-w-sm w-full text-center">
+            <div className="w-16 h-16 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-6">
+              <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+            <h3 className="text-2xl font-black text-brand-black mb-2">Order Success!</h3>
+            <p className="text-brand-black/60 font-medium mb-8">Your order has been placed successfully. We'll start preparing it right away.</p>
+            <button 
+              onClick={() => setShowOrderSuccess(false)}
+              className="w-full bg-brand-black text-white py-4 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-brand-black/90 transition-all shadow-lg active:scale-95"
+            >
+              Great, Thanks!
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

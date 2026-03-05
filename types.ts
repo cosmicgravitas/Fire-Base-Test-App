@@ -7,6 +7,7 @@ export interface Item {
   description: string;
   price: number;
   isSelected: boolean; // Controls public visibility
+  createdAt?: string;
 }
 
 export interface CartItem extends Item {
