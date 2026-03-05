@@ -1,0 +1,5 @@
+{
+  "name": "Firebase Test App",
+  "description": "An application to showcase items for sale. Upload an image, and AI will automatically generate a title and description. You can then set the price for your item.",
+  "requestFramePermissions": []
+}
